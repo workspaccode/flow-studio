@@ -7,7 +7,7 @@ import {portable} from './model';
 export const core=window.FlowCore;
 core.standalone.coreSource=coreSource;
 export const builtins:Record<string,Asset>={...originalAssets,...core.extraAssets};
-export const equipment:[string,string][]=[['solar','ألواح شمسية'],['battery','بطارية'],['inverter','عاكس'],['grid','شبكة الكهرباء'],['home','منزل'],['generator','مولد'],['pump','مضخة'],['junction','نقطة ربط']];
+export const equipment:[string,string][]=[['solar','ألواح شمسية'],['battery','بطارية'],['inverter','عاكس'],['grid','شبكة الكهرباء'],['home','منزل'],['backup','حمل احتياطي'],['generator','مولد'],['pump','مضخة'],['junction','نقطة ربط']];
 export function createProject(layout:string,title:string){return portable({...core.preset(layout,builtins),title});}
 export function checkBounds(p:Project){const b=core.bounds(p);if(b.minX<-.5||b.minY<-.5||b.maxX>p.width+.5||b.maxY>p.height+.5)throw new Error('بعض العناصر خارج البورد. استخدم «ملاءمة مساحة البورد» من الخصائص.');}
 export type ExportFormat='lottie'|'html'|'svg'|'png'|'project';

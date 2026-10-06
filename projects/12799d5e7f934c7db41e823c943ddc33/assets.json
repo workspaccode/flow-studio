@@ -1,0 +1,27 @@
+{
+  "tree": {
+    "file": "tree.svg",
+    "width": 100,
+    "height": 100
+  },
+  "sun": {
+    "file": "sun.svg",
+    "width": 200,
+    "height": 200
+  },
+  "river": {
+    "file": "river.svg",
+    "width": 800,
+    "height": 220
+  },
+  "forest": {
+    "file": "forest.svg",
+    "width": 160,
+    "height": 120
+  },
+  "pine": {
+    "file": "pine.svg",
+    "width": 100,
+    "height": 100
+  }
+}
