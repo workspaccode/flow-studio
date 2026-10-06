@@ -1,0 +1,17 @@
+{
+  "ground-sand": {
+    "file": "ground-sand.svg",
+    "width": 200,
+    "height": 116
+  },
+  "sun": {
+    "file": "sun.svg",
+    "width": 100,
+    "height": 100
+  },
+  "moon-full": {
+    "file": "moon-full.svg",
+    "width": 100,
+    "height": 100
+  }
+}
