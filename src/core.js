@@ -34,7 +34,29 @@ Object.assign(extraAssets,{
  tree:svgAsset(treeBody),pine:svgAsset('<ellipse cx="50" cy="92" rx="30" ry="6" fill="#254c3c" opacity=".2"/><path d="M46 65h8v28h-8Z" fill="#86613d"/><path d="m50 5 23 36H62l23 33H15l23-33H27Z" fill="#377b60"/><path d="m50 5 23 36H50Z" fill="#509473"/>'),
  forest:svgAsset(`<g transform="translate(45 0) scale(.65)">${treeBody}</g><g transform="translate(3 25) scale(.7)">${treeBody}</g><g transform="translate(80 22) scale(.75)">${treeBody}</g><g transform="translate(42 38) scale(.8)">${treeBody}</g>`,160,120)
 });
-function canConnect(n){return n&&n.role!=='decoration'&&!domainCatalog.some(([kind])=>kind===n.kind);}
+function groundMaterial(n){return n.terrainMaterial||(['grass','sand','stone','soil','concrete'].find(k=>n.kind==='ground-'+k))||'grass';}
+function groundRectangles(n){return (n.terrainRects||[[0,0,1,1]]).map(([x,y,w,h])=>[n.x-n.w/2+x*n.w,n.y-n.h/2+y*n.h,w*n.w,h*n.h]);}
+function groundAsset(n){
+ const material=groundMaterial(n),texture=extraAssets['ground-'+material];
+ const scale=Math.min(1,1600/n.w,1600/n.h),w=n.w*scale,h=n.h*scale;
+ const d=(n.terrainRects||[[0,0,1,1]]).map(([x,y,rw,rh])=>`M${x*w} ${y*h}h${rw*w}v${rh*h}h${-rw*w}Z`).join('');
+ const body=decodeURIComponent(escape(atob(texture.src.split(',')[1]))).replace(/^<svg[^>]*>/,'').replace(/<\/svg>$/,'');return svgAsset(`<defs><pattern id="soil" patternUnits="userSpaceOnUse" width="${256*scale}" height="${256*scale}"><g transform="scale(${256*scale/512})">${body}</g></pattern></defs><path d="${d}" fill="url(#soil)"/>`,w,h);
+}
+function mergeGround(p,ids){
+ const nodes=p.nodes.filter(n=>ids.includes(n.id));
+ if(nodes.length<2||nodes.length!==new Set(ids).size||nodes.some(n=>!isGround(n)))throw new Error('اختر قطعتين من الأرض على الأقل');
+ const material=groundMaterial(nodes[0]);if(nodes.some(n=>groundMaterial(n)!==material||n.state!==nodes[0].state))throw new Error('الدمج يحتاج نفس خامة الأرض وحالة الظهور');
+ const rects=nodes.flatMap(groundRectangles);if(rects.length>200)throw new Error('الحد الأقصى 200 قطعة داخل الأرض المدمجة');
+ // Require a connected union; corners alone do not join land.
+ const touches=(a,b)=>{const dx=Math.min(a[0]+a[2],b[0]+b[2])-Math.max(a[0],b[0]),dy=Math.min(a[1]+a[3],b[1]+b[3])-Math.max(a[1],b[1]);return dx>=-.01&&dy>=-.01&&(dx>.01||dy>.01);};
+ const seen=new Set([0]);let grew=true;while(grew){grew=false;for(let i=0;i<rects.length;i++)if(!seen.has(i)&&[...seen].some(j=>touches(rects[i],rects[j]))){seen.add(i);grew=true;}}
+ if(seen.size!==rects.length)throw new Error('حرّك قطع الأرض لتتلامس أو تتداخل قبل الدمج');
+ const x=Math.min(...rects.map(r=>r[0])),y=Math.min(...rects.map(r=>r[1])),w=Math.max(...rects.map(r=>r[0]+r[2]))-x,h=Math.max(...rects.map(r=>r[1]+r[3]))-y;
+ if(w>8192||h>8192)throw new Error('الأرض المدمجة أكبر من مساحة البورد المسموحة');
+ const merged={...nodes[0],x:x+w/2,y:y+h/2,w,h,role:'decoration',showLabel:false,terrainMaterial:material,terrainRects:rects.map(r=>[(r[0]-x)/w,(r[1]-y)/h,r[2]/w,r[3]/h])};
+ merged.kind='ground-merged-'+merged.id;p.assets[merged.kind]=groundAsset(merged);p.nodes=p.nodes.filter(n=>!ids.includes(n.id));p.nodes.unshift(merged);return merged.id;
+}
+function canConnect(n){return n&&!isGround(n)&&n.role!=='decoration'&&!domainCatalog.some(([kind])=>kind===n.kind);}
 function isGround(n){return n.kind.startsWith('ground-');}
 function isBackdrop(n){return n.kind.startsWith('ground-')||n.kind==='platform-iso'||n.kind==='hills'||n.kind==='sky-night';}
 function node(id,kind,name,x,y,w,h,fields={}){return{id,kind,name,x,y,w,h,state:'active',value:0,unit:'kW',current:0,currentUnit:'A',efficiency:100,status:'Online',showDetails:false,labelSide:'bottom',labelGap:12,fontSize:16,color:'#293b55',...fields};}
@@ -44,7 +66,7 @@ function preset(kind,assets={}){
  if(kind==='domain'){
    p.title='المجال · مشهد الطاقة';p.background='#0b1426';p.width=1600;p.height=1000;
    const S=v=>Math.round(v*2/3),N=(id,kind,name,x,y,w,h,f)=>node(id,kind,name,S(x),S(y),S(w),S(h),{showLabel:false,...f}),card=(c,side,gap,icon,f)=>({showLabel:true,labelStyle:'dash',labelSide:side,labelGap:S(gap),fontSize:15,color:c,icon,leader:true,...f});
-   p.nodes=[N('sky','sky-night','السماء',1200,750,2400,1500),N('hills','hills','التلال',1200,1260,2400,480),N('platform','platform-iso','المنصة',1200,800,1900,1235),
+   p.nodes=[N('sky','sky-night','السماء',1200,750,2400,1500),N('hills','hills','التلال',1200,1260,2400,480),N('terrain','ground-soil','الأرض',1200,960,2400,1080,{terrainMaterial:'soil'}),
     N('sun','sun','الشمس',2150,200,300,300),
     N('pv-4','solar','لوح 4',1120,390,300,272,{role:'decoration'}),N('pv-3','solar','لوح 3',980,460,300,272,{role:'decoration'}),N('pv-2','solar','لوح 2',840,530,300,272,{role:'decoration'}),
     N('solar','solar','PV ARRAY • 28.8 kWp',700,600,300,272,card('#ffc23d','left',150,'sun',{value:6.79,unit:'kW',progress:24,status:'Master 3.4 • Slave 1 3.4 kW'})),
@@ -107,12 +129,12 @@ function dashCard(n,b,g){const d=b.dash,s=d.s,c=n.color;g.append(element('rect',
 function leader(n,b){const side=n.labelSide||'bottom',cx=b.x+b.width/2,cy=b.y+b.height/2,a=side==='right'?[b.x,cy]:side==='left'?[b.x+b.width,cy]:side==='top'?[cx,b.y+b.height]:[cx,b.y],g=element('g',{'pointer-events':'none'});g.append(element('path',{d:`M${rnd(a[0])} ${rnd(a[1])}L${rnd(n.x)} ${rnd(n.y)}`,stroke:n.color,'stroke-width':1.6,'stroke-dasharray':'2 5','stroke-linecap':'round',opacity:.75,fill:'none'}),element('circle',{cx:n.x,cy:n.y,r:9,fill:n.color,opacity:.22}),element('circle',{cx:n.x,cy:n.y,r:3.6,fill:n.color}));return g;}
 function labels(n){const b=labelBox(n),g=element('g',{'data-label':n.id});if(!b.lines.length)return g;if(b.dash)return dashCard(n,b,g);if(n.labelStyle==='card')g.append(element('rect',{x:b.x,y:b.y,width:b.width,height:b.height,rx:12,fill:'#192633',stroke:'#405064','stroke-width':1}));let y=b.y+b.pad;for(const l of b.lines){y+=l.size;g.append(element('text',{x:b.x+b.width/2,y,'text-anchor':'middle','font-family':'Arial, sans-serif','font-size':l.size,'font-weight':l.weight,fill:l.color},l.text));y+=9;}return g;}
 const TILE=256;
-function groundFill(parent,n,a,id){const defs=element('defs'),pat=element('pattern',{id,patternUnits:'userSpaceOnUse',x:0,y:0,width:TILE,height:TILE});pat.append(element('image',{x:0,y:0,width:TILE,height:TILE,href:a.src,preserveAspectRatio:'none'}));defs.append(pat);parent.append(defs,element('rect',{x:n.x-n.w/2,y:n.y-n.h/2,width:n.w,height:n.h,fill:`url(#${id})`,'shape-rendering':'crispEdges'}));}
+function groundFill(parent,n,a,id){const defs=element('defs'),pat=element('pattern',{id,patternUnits:'userSpaceOnUse',x:0,y:0,width:TILE,height:TILE});pat.append(element('image',{x:0,y:0,width:TILE,height:TILE,href:a.src,preserveAspectRatio:'none'}));defs.append(pat);const d=groundRectangles(n).map(([x,y,w,h])=>`M${x} ${y}h${w}v${h}h${-w}Z`).join('');parent.append(defs,element('path',{d,fill:`url(#${id})`,'shape-rendering':'crispEdges'}));}
 function lengthOf(d){const path=element('path',{d});return path.getTotalLength();}
 function render(p,options={}){
  const svg=element('svg',{xmlns:NS,width:p.width,height:p.height,viewBox:`0 0 ${p.width} ${p.height}`,role:'img','aria-label':p.title});svg.append(element('title',{},p.title));
  if(!options.transparent)svg.append(element('rect',{width:p.width,height:p.height,fill:p.background}));
- if(options.grid){const defs=element('defs'),pat=element('pattern',{id:'editor-grid',width:20,height:20,patternUnits:'userSpaceOnUse'});pat.append(element('circle',{cx:1,cy:1,r:.7,fill:'#d1dbea'}));defs.append(pat);svg.append(defs,element('rect',{width:p.width,height:p.height,fill:'url(#editor-grid)','pointer-events':'none'}));}
+
  const groundLayer=element('g',{'data-layer':'terrain'});svg.append(groundLayer);
  const flowLayer=element('g',{'data-layer':'flows'}),nodeLayer=element('g',{'data-layer':'nodes'});svg.append(flowLayer,nodeLayer);
  for(const e of p.edges){const sh=geometry(points(p,e),e.radius),d=pathData(sh);if(!d)continue;const len=Math.max(1,lengthOf(d));const g=element('g',{'data-edge':e.id,opacity:e.state==='hidden'?0:1,'pointer-events':e.state==='hidden'?'none':undefined});
@@ -124,16 +146,18 @@ function render(p,options={}){
   if(options.selection?.type==='edge'&&options.selection.id===e.id){g.append(element('path',{d,fill:'none',stroke:'#3265ef','stroke-width':1,'stroke-dasharray':'4 4','pointer-events':'none'}));if(!e.auto)e.waypoints.forEach((q,j)=>g.append(element('circle',{cx:q[0],cy:q[1],r:6,fill:'#fff',stroke:'#5579ef','stroke-width':2,'data-waypoint':j,'data-edge-id':e.id,cursor:'move'})));}
   flowLayer.append(g);
  }
- for(const n of p.nodes){const g=element('g',{'data-node':n.id,opacity:opacity(n.state),'pointer-events':n.state==='hidden'?'none':undefined}),a=p.assets[n.kind];
+ for(const n of p.nodes){const g=element('g',{'data-node':n.id,opacity:opacity(n.state),'pointer-events':n.state==='hidden'?'none':undefined}),a=isGround(n)?extraAssets['ground-'+groundMaterial(n)]:p.assets[n.kind];
+  if(!isBackdrop(n)&&canConnect(n)&&n.kind!=='junction')g.append(element('ellipse',{cx:n.x,cy:n.y+n.h*.4,rx:n.w*.42,ry:Math.max(3,n.h*.07),fill:'#243924',opacity:.2,'pointer-events':'none'}));
   if(a&&isGround(n))groundFill(g,n,a,'ground-pattern-'+p.nodes.indexOf(n));
   else if(a)g.append(element('image',{x:n.x-n.w/2,y:n.y-n.h/2,width:n.w,height:n.h,href:a.src,preserveAspectRatio:'xMidYMid meet'}));
   else g.append(element('rect',{x:n.x-n.w/2,y:n.y-n.h/2,width:n.w,height:n.h,rx:8,fill:'#e5ebf5'}));
   if(n.labelStyle==='dash'&&n.leader!==false){const lb=labelBox(n);if(lb.lines.length)g.append(leader(n,lb));}
   g.append(labels(n));
   if(options.editable){const b=labelBox(n);g.append(element('rect',{x:Math.min(n.x-n.w/2,b.lines.length?b.x:n.x-n.w/2),y:Math.min(n.y-n.h/2,b.lines.length?b.y:n.y-n.h/2),width:Math.max(n.x+n.w/2,b.lines.length?b.x+b.width:n.x+n.w/2)-Math.min(n.x-n.w/2,b.lines.length?b.x:n.x-n.w/2),height:Math.max(n.y+n.h/2,b.lines.length?b.y+b.height:n.y+n.h/2)-Math.min(n.y-n.h/2,b.lines.length?b.y:n.y-n.h/2),fill:'transparent'}));}
-  if(options.selection?.type==='node'&&options.selection.id===n.id){g.append(element('rect',{x:n.x-n.w/2-6,y:n.y-n.h/2-6,width:n.w+12,height:n.h+12,rx:8,fill:'none',stroke:'#6488ef','stroke-width':1.5,'stroke-dasharray':'5 4','pointer-events':'none'}));for(const pt of (canConnect(n)?['top','bottom','left','right']:[])){const q=port(n,pt);g.append(element('circle',{cx:q[0],cy:q[1],r:4,fill:'#fff',stroke:'#6488ef','stroke-width':1.5,'pointer-events':'none'}));}}
+  if(options.selection?.type==='node'&&(options.selection.ids||[options.selection.id]).includes(n.id)){g.append(element('rect',{x:n.x-n.w/2-6,y:n.y-n.h/2-6,width:n.w+12,height:n.h+12,rx:8,fill:'none',stroke:'#6488ef','stroke-width':1.5,'stroke-dasharray':'5 4','pointer-events':'none'}));for(const pt of (canConnect(n)?['top','bottom','left','right']:[])){const q=port(n,pt);g.append(element('circle',{cx:q[0],cy:q[1],r:4,fill:'#fff',stroke:'#6488ef','stroke-width':1.5,'pointer-events':'none'}));}}
   (isBackdrop(n)?groundLayer:nodeLayer).append(g);
  }
+ if(options.grid){const defs=element('defs'),pat=element('pattern',{id:'editor-grid',width:20,height:20,patternUnits:'userSpaceOnUse'});pat.append(element('circle',{cx:1,cy:1,r:.7,fill:'#d1dbea'}));defs.append(pat);svg.append(defs,element('rect',{width:p.width,height:p.height,fill:'url(#editor-grid)','pointer-events':'none'}));}
  return svg;
 }
 function serialize(svg){return new XMLSerializer().serializeToString(svg);}
@@ -160,10 +184,11 @@ async function lottie(p,options={}){
    layers.push(shapeLayer(`flow-${e.id} • ${glow?'glow':'pulse'}`,[clone(path),stroke(e.color,glow?e.width*2.8:e.width,glow?13:95,dash)]));
   }
  }
- const assetMap={};for(const n of p.nodes){if(n.state==='hidden')continue;let a=p.assets[n.kind];if(!a)continue;let ref=assetMap[n.kind];
+ const assetMap={};for(const n of p.nodes){if(n.state==='hidden')continue;let a=isGround(n)?extraAssets['ground-'+groundMaterial(n)]:p.assets[n.kind];if(!a)continue;let ref=assetMap[n.kind];
   if(isGround(n)){const gs=Math.min(1,2048/Math.max(n.w,n.h)),gsvg=element('svg',{xmlns:NS,width:n.w,height:n.h,viewBox:`${n.x-n.w/2} ${n.y-n.h/2} ${n.w} ${n.h}`});groundFill(gsvg,n,a,'gp');const gc=await raster(gsvg,n.w,n.h,gs);a={...a,width:gc.width,height:gc.height};ref='art_'+Object.keys(assetMap).length;assetMap['@'+n.id]=ref;out.assets.push({id:ref,w:gc.width,h:gc.height,u:'',p:gc.toDataURL('image/png'),e:1});}
   else
   if(!ref){ref='art_'+Object.keys(assetMap).length;assetMap[n.kind]=ref;let src=a.src;if(!src.startsWith('data:image/png;')&&!src.startsWith('data:image/jpeg;')){const im=await image(src),c=document.createElement('canvas');c.width=a.width;c.height=a.height;c.getContext('2d').drawImage(im,0,0,c.width,c.height);src=c.toDataURL('image/png');}out.assets.push({id:ref,w:a.width,h:a.height,u:'',p:src,e:1});}
+  if(!isBackdrop(n)&&canConnect(n)&&n.kind!=='junction')layers.push(shapeLayer(`node-${n.id} • contact shadow`,[{ty:'el',d:1,s:stat([n.w*.84,Math.max(6,n.h*.14)]),p:stat([n.x,n.y+n.h*.4])},{ty:'fl',c:stat(rgb('#243924')),o:stat(20*opacity(n.state)),r:1,bm:0}]));
   const scale=Math.min(n.w/a.width,n.h/a.height),w=a.width*scale,h=a.height*scale,transform=ks([n.x-w/2,n.y-h/2],opacity(n.state)*100);transform.s=stat([scale*100,scale*100,100]);layers.push({...base(`node-${n.id} • icon`,2,transform),refId:ref});
   const b=labelBox(n);if(!b.lines.length)continue;const s=element('svg',{xmlns:NS,width:b.width,height:b.height,viewBox:`${b.x} ${b.y} ${b.width} ${b.height}`});s.append(labels(n));const c=await raster(s,b.width,b.height,3),id='label_'+n.id;out.assets.push({id,w:c.width,h:c.height,u:'',p:c.toDataURL('image/png'),e:1});const k=ks([b.x,b.y],opacity(n.state)*100);k.s=stat([100/3,100/3,100]);layers.push({...base(`node-${n.id} • label snapshot`,2,k),refId:id});
  }
@@ -180,13 +205,13 @@ function validate(p){if(!p||p.format!=='flow-studio'||p.version!==1||!Array.isAr
  if(p.nodes.length>100||p.edges.length>200)throw new Error('Project is too large (100 elements / 200 lines maximum).');
  const finite=(v,min,max)=>Number.isFinite(v)&&v>=min&&v<=max;const color=v=>/^#[\da-f]{6}$/i.test(v);const ids=new Set();
  if(!finite(p.width,100,8192)||!finite(p.height,100,8192)||!color(p.background))throw new Error('Invalid canvas settings');
- for(const n of p.nodes){if(!n||typeof n.id!=='string'||ids.has(n.id)||!finite(n.x,-8192,16384)||!finite(n.y,-8192,16384)||!finite(n.w,1,8192)||!finite(n.h,1,8192)||!STATES.includes(n.state)||!finite(n.fontSize,8,60)||!color(n.color)||!['bottom','top','left','right'].includes(n.labelSide))throw new Error('Invalid element data');if(n.labelStyle!==undefined&&!['text','card','dash'].includes(n.labelStyle))throw new Error('Invalid label style');if(n.icon!==undefined&&!Object.hasOwn(CARD_ICONS,n.icon)&&n.icon!=='')throw new Error('Invalid icon');if(n.progress!==undefined&&!finite(n.progress,0,100))throw new Error('Invalid progress');if(n.leader!==undefined&&typeof n.leader!=='boolean')throw new Error('Invalid leader option');for(const key of ['showLabel','showName','showValue','showStatus','showDetails'])if(n[key]!==undefined&&typeof n[key]!=='boolean')throw new Error('Invalid display option');ids.add(n.id);}
- const edgeIds=new Set();for(const e of p.edges){if(!e||typeof e.id!=='string'||edgeIds.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||!STATES.includes(e.state)||!color(e.color)||!color(e.trackColor)||!finite(e.width,.5,30)||!finite(e.trackWidth,.5,30)||!finite(e.radius,0,100)||!finite(e.duration,.5,20)||![1,-1].includes(e.direction)||!['top','bottom','left','right','center'].includes(e.sourcePort)||!['top','bottom','left','right','center'].includes(e.targetPort)||!Array.isArray(e.waypoints)||e.waypoints.length>80||!e.waypoints.every(q=>Array.isArray(q)&&q.length===2&&q.every(v=>finite(v,-4096,8192))))throw new Error('Invalid line data');if(!canConnect(p.nodes.find(n=>n.id===e.from))||!canConnect(p.nodes.find(n=>n.id===e.to)))throw new Error('Nature elements cannot be connected');edgeIds.add(e.id);}
+ for(const n of p.nodes){if(!n||typeof n.id!=='string'||ids.has(n.id)||!finite(n.x,-8192,16384)||!finite(n.y,-8192,16384)||!finite(n.w,1,8192)||!finite(n.h,1,8192)||!STATES.includes(n.state)||!finite(n.fontSize,8,60)||!color(n.color)||!['bottom','top','left','right'].includes(n.labelSide))throw new Error('Invalid element data');if(n.labelStyle!==undefined&&!['text','card','dash'].includes(n.labelStyle))throw new Error('Invalid label style');if(n.icon!==undefined&&!Object.hasOwn(CARD_ICONS,n.icon)&&n.icon!=='')throw new Error('Invalid icon');if(n.progress!==undefined&&!finite(n.progress,0,100))throw new Error('Invalid progress');if(n.leader!==undefined&&typeof n.leader!=='boolean')throw new Error('Invalid leader option');for(const key of ['showLabel','showName','showValue','showStatus','showDetails'])if(n[key]!==undefined&&typeof n[key]!=='boolean')throw new Error('Invalid display option');if(n.role!==undefined&&!['decoration','equipment'].includes(n.role))throw new Error('Invalid element role');if(n.terrainMaterial!==undefined&&(!isGround(n)||!extraAssets['ground-'+n.terrainMaterial]))throw new Error('Invalid ground material');if(n.terrainRects!==undefined&&(!isGround(n)||!Array.isArray(n.terrainRects)||!n.terrainRects.length||n.terrainRects.length>200||!n.terrainRects.every(r=>Array.isArray(r)&&r.length===4&&r.every(v=>finite(v,0,1))&&r[2]>0&&r[3]>0&&r[0]+r[2]<=1.00001&&r[1]+r[3]<=1.00001)))throw new Error('Invalid ground shape');ids.add(n.id);}
+ const edgeIds=new Set();for(const e of p.edges){if(!e||typeof e.id!=='string'||edgeIds.has(e.id)||!ids.has(e.from)||!ids.has(e.to)||!STATES.includes(e.state)||!color(e.color)||!color(e.trackColor)||!finite(e.width,.5,30)||!finite(e.trackWidth,.5,30)||!finite(e.radius,0,100)||!finite(e.duration,.5,20)||![1,-1].includes(e.direction)||!['top','bottom','left','right','center'].includes(e.sourcePort)||!['top','bottom','left','right','center'].includes(e.targetPort)||!Array.isArray(e.waypoints)||e.waypoints.length>80||!e.waypoints.every(q=>Array.isArray(q)&&q.length===2&&q.every(v=>finite(v,-8192,16384))))throw new Error('Invalid line data');if(!canConnect(p.nodes.find(n=>n.id===e.from))||!canConnect(p.nodes.find(n=>n.id===e.to)))throw new Error('Nature elements cannot be connected');edgeIds.add(e.id);}
  for(const[k,a]of Object.entries(p.assets)){if(!a||!finite(a.width,1,10000)||!finite(a.height,1,10000)||typeof a.src!=='string'||!/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/i.test(a.src))throw new Error('Project assets must be embedded images');if(a.src.startsWith('data:image/svg+xml;')){const text=decodeURIComponent(escape(atob(a.src.split(',')[1])));a.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(sanitizeSVG(text))));}}
  return p;
 }
 function bounds(p){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;const take=(x,y)=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);};for(const n of p.nodes.filter(n=>n.state!=='hidden')){take(n.x-n.w/2,n.y-n.h/2);take(n.x+n.w/2,n.y+n.h/2);const b=labelBox(n);if(b.lines.length){take(b.x,b.y);take(b.x+b.width,b.y+b.height);}}for(const e of p.edges.filter(e=>e.state!=='hidden'))for(const q of points(p,e)){take(q[0]-e.width*1.4,q[1]-e.width*1.4);take(q[0]+e.width*1.4,q[1]+e.width*1.4);}if(!Number.isFinite(minX))return{minX:0,minY:0,maxX:80,maxY:80,width:100,height:100};return{minX,minY,maxX,maxY,width:Math.ceil(maxX+20),height:Math.ceil(maxY+20)};}
 function fit(p){const b=bounds(p),dx=Math.max(0,20-b.minX),dy=Math.max(0,20-b.minY);for(const n of p.nodes){n.x+=dx;n.y+=dy;}for(const e of p.edges)e.waypoints=e.waypoints.map(q=>[q[0]+dx,q[1]+dy]);p.width=Math.min(8192,Math.max(100,b.width+dx));p.height=Math.min(8192,Math.max(100,b.height+dy));return p;}
 
-const api={NS,STATES,clone,esc,num,element,svgAsset,extraAssets,domainCatalog,isGround,canConnect,isBackdrop,node,edge,preset,port,points,geometry,pathData,labelBox,labelLines,labels,opacity,render,serialize,raster,lottie,standalone,validate,sanitizeSVG,bounds,fit};global.FlowCore=api;
+const api={NS,STATES,clone,esc,num,element,svgAsset,extraAssets,domainCatalog,isGround,groundMaterial,groundRectangles,groundAsset,mergeGround,canConnect,isBackdrop,node,edge,preset,port,points,geometry,pathData,labelBox,labelLines,labels,opacity,render,serialize,raster,lottie,standalone,validate,sanitizeSVG,bounds,fit};global.FlowCore=api;
 })(window);

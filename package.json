@@ -10,7 +10,7 @@
     "start": "python3 server.py",
     "build:legacy": "python3 src/build.py",
     "test": "npm run build && npm run test:unit && npm run test:e2e",
-    "test:unit": "python3 -m unittest discover -s tests -v",
+    "test:unit": "python3 -m unittest discover -s tests -v && node --test tests/terrain.test.mjs",
     "test:e2e": "node --test tests/react-studio.test.mjs"
   },
   "dependencies": {
