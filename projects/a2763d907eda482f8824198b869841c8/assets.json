@@ -1,0 +1,52 @@
+{
+  "platform-iso": {
+    "file": "platform-iso.svg",
+    "width": 800,
+    "height": 520
+  },
+  "iso-solar": {
+    "file": "iso-solar.svg",
+    "width": 300,
+    "height": 255
+  },
+  "iso-inverter": {
+    "file": "iso-inverter.svg",
+    "width": 82,
+    "height": 184
+  },
+  "iso-battery": {
+    "file": "iso-battery.svg",
+    "width": 82,
+    "height": 184
+  },
+  "iso-meter": {
+    "file": "iso-meter.svg",
+    "width": 82,
+    "height": 184
+  },
+  "iso-home": {
+    "file": "iso-home.svg",
+    "width": 260,
+    "height": 230
+  },
+  "iso-grid": {
+    "file": "iso-grid.svg",
+    "width": 185,
+    "height": 252
+  },
+  "iso-backup": {
+    "file": "iso-backup.svg",
+    "width": 155,
+    "height": 165
+  },
+  "sun-orbit": {
+    "file": "sun-orbit.svg",
+    "width": 100,
+    "height": 100
+  },
+  "landscape-dusk": {
+    "file": "landscape-dusk.svg",
+    "width": 1600,
+    "height": 700
+  }
+}

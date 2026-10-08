@@ -157,8 +157,44 @@ class Handler(SimpleHTTPRequestHandler):
         self.write_project(False)
 
 
+def launch_desktop(port):
+    import subprocess
+    import shutil
+    electron_path = ROOT / 'node_modules' / '.bin' / 'electron'
+    if electron_path.exists():
+        cmd = [str(electron_path), str(ROOT / 'desktop' / 'main.cjs')]
+    elif shutil.which('npx'):
+        cmd = ['npx', 'electron', str(ROOT / 'desktop' / 'main.cjs')]
+    else:
+        import webbrowser
+        webbrowser.open(f'http://127.0.0.1:{port}/#domain')
+        return None
+    env = os.environ.copy()
+    env['FLOW_STUDIO_PORT'] = str(port)
+    return subprocess.Popen(cmd, cwd=str(ROOT), env=env)
+
+
 if __name__ == '__main__':
+    import sys
     port = int(os.environ.get('FLOW_STUDIO_PORT', '8765'))
+    is_desktop = '--desktop' in sys.argv or '-d' in sys.argv or os.environ.get('FLOW_STUDIO_DESKTOP') == '1'
     print(f'Flow Studio: http://127.0.0.1:{port}/#domain', flush=True)
     print('Domain projects:', PROJECTS, flush=True)
-    ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
+    httpd = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    if is_desktop:
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        print('Starting Desktop App...', flush=True)
+        desktop_proc = launch_desktop(port)
+        if desktop_proc:
+            try:
+                desktop_proc.wait()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                httpd.shutdown()
+        else:
+            httpd.serve_forever()
+    else:
+        httpd.serve_forever()
+

@@ -1,0 +1,37 @@
+{
+  "platform-iso": {
+    "file": "platform-iso.svg",
+    "width": 800,
+    "height": 520
+  },
+  "iso-battery": {
+    "file": "iso-battery.svg",
+    "width": 82,
+    "height": 184
+  },
+  "sun-orbit": {
+    "file": "sun-orbit.svg",
+    "width": 100,
+    "height": 100
+  },
+  "landscape-dusk": {
+    "file": "landscape-dusk.svg",
+    "width": 1600,
+    "height": 700
+  },
+  "solar-array": {
+    "file": "solar-array.svg",
+    "width": 480,
+    "height": 320
+  },
+  "sky-night": {
+    "file": "sky-night.svg",
+    "width": 1600,
+    "height": 1000
+  },
+  "hills": {
+    "file": "hills.svg",
+    "width": 1600,
+    "height": 320
+  }
+}

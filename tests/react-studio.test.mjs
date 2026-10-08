@@ -46,7 +46,8 @@ test('Wide board, joined terrain, zoom/pan and folder round-trip', {timeout:1200
  const server=spawn('python3',['server.py'],{env:{...process.env,FLOW_STUDIO_PORT:String(port),FLOW_STUDIO_PROJECTS:folder},stdio:'pipe'});let browser;
  try{
   for(let i=0;i<60;i++){try{if((await fetch(base+'/api/domain/projects')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
-  browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{})});const page=await browser.newPage({viewport:{width:1600,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  browser=await chromium.launch({headless:true,...(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:existsSync(chrome)?{executablePath:chrome}:{})});const page=await browser.newPage({viewport:{width:1600,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/#board/'+'f'.repeat(32));await page.getByRole('heading',{name:'مشاريع المجال'}).waitFor();assert.equal(await page.getByTestId('scene-canvas').count(),0);
   await page.getByTestId('project-name').fill('أرض متصلة');await page.getByRole('button',{name:'إنشاء وفتح البورد'}).click();await page.getByTestId('scene-canvas').waitFor();const id=page.url().split('/').at(-1);
   await page.getByRole('button',{name:'طبيعة',exact:true}).click();await page.getByRole('button',{name:'+ أرض عشبية',exact:true}).click();await page.getByRole('button',{name:'يمين',exact:true}).click();await page.locator('[data-node=ground-grass]').click();await page.getByRole('button',{name:'تحديد الأرض',exact:true}).click();await page.locator('[data-node=ground-grass-1]').click();await page.getByRole('button',{name:'دمج الأرض',exact:true}).click();await page.getByRole('button',{name:'تحديد الأرض',exact:true}).click();assert.equal(await page.locator('[data-layer=terrain] [data-node]').count(),1);
@@ -64,5 +65,55 @@ test('Wide board, joined terrain, zoom/pan and folder round-trip', {timeout:1200
   await page.screenshot({path:path.join(os.tmpdir(),'flow-land-board.png'),fullPage:true});
   for(const width of [390,768]){await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));}
   assert.deepEqual(errors,[]);
+ }finally{await browser?.close();server.kill('SIGTERM');await new Promise(resolve=>server.once('exit',resolve));await rm(folder,{recursive:true,force:true});}
+});
+
+test('Reference energy tools: independent cards, vector Lottie, particle and nature motion', {timeout:120000}, async()=>{
+ const folder=await mkdtemp(path.join(os.tmpdir(),'flow-reference-test-')),port=8878,base=`http://127.0.0.1:${port}`;
+ const server=spawn('python3',['server.py'],{env:{...process.env,FLOW_STUDIO_PORT:String(port),FLOW_STUDIO_PROJECTS:folder},stdio:'pipe'});let browser;
+ try{
+  for(let i=0;i<60;i++){try{if((await fetch(base+'/api/domain/projects')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+  browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});const page=await browser.newPage({viewport:{width:1800,height:1200}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(base+'/#domain');await page.getByTestId('project-name').fill('المشهد المرجعي');await page.getByLabel('ابدأ من').selectOption('reference-energy');await page.getByRole('button',{name:'إنشاء وفتح البورد'}).click();await page.getByTestId('scene-canvas').waitFor();const id=page.url().split('/').at(-1);
+  const getProject=async()=>(await(await fetch(base+'/api/domain/projects/'+id)).json()).project;
+  const save=async()=>{await page.getByRole('button',{name:'حفظ الآن',exact:true}).click();await page.getByRole('status').filter({hasText:'محفوظ في المجلد'}).waitFor();};
+  const original=await getProject(),originalHome=original.nodes.find(n=>n.id==='home');
+  assert.equal(original.nodes.filter(n=>n.kind==='iso-solar').length,4);
+  // Selecting a different object commits the previous input to its owner and resets the inspector.
+  await page.locator('[data-node=home]').click();
+  await page.getByLabel('اسم العنصر',{exact:true}).fill('منزل محدد');
+  await page.locator('[data-node=sun]').click();
+  assert.equal(await page.locator('.inspector').getAttribute('data-selection-id'),'sun');
+  assert.match(await page.getByRole('status',{name:'التحديد الحالي'}).innerText(),/شمس متحركة/);
+  assert.equal(await page.getByLabel('القيمة',{exact:true}).count(),0);
+  assert.equal(await page.getByLabel('الكفاءة %',{exact:true}).count(),0);
+  assert.equal(await page.getByLabel('نوع الحركة').count(),1);
+  await save();let switched=await getProject();assert.equal(switched.nodes.find(n=>n.id==='home').name,'منزل محدد');assert.equal(switched.nodes.find(n=>n.id==='sun').name,'sun');
+  await page.locator('.layer').filter({hasText:'منزل محدد'}).click();
+  assert.equal(await page.getByLabel('اسم العنصر',{exact:true}).inputValue(),'منزل محدد');
+  assert.equal(await page.getByLabel('نوع الحركة').count(),0);
+  assert.equal(await page.getByLabel('الكفاءة %',{exact:true}).count(),1);
+  await page.getByLabel('X',{exact:true}).fill('99999');
+  await page.locator('[data-label=solar]').click();
+  assert.equal(await page.locator('.inspector').getAttribute('data-selection-id'),'solar');
+  assert.equal(Number(await page.getByLabel('X',{exact:true}).inputValue()),original.nodes.find(n=>n.id==='solar').x);
+  assert.equal(await page.locator('.inspector').evaluate(e=>e.scrollTop),0);
+
+  assert.equal(await page.locator('[data-layer=labels] [data-label=home]').count(),1);
+  assert.equal(await page.locator('.scene-canvas text').first().evaluate(e=>getComputedStyle(e).direction),'ltr');
+  const label=page.locator('[data-label=home]'),box=await label.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+20,box.y+box.height/2-15,{steps:5});await page.mouse.up();await save();
+  let saved=await getProject(),home=saved.nodes.find(n=>n.id==='home');assert.equal(home.x,originalHome.x);assert.equal(home.y,originalHome.y);assert.notEqual(home.labelOffsetX,originalHome.labelOffsetX);
+  await page.getByRole('button',{name:'تراجع',exact:true}).click();await save();saved=await getProject();assert.equal(saved.nodes.find(n=>n.id==='home').labelOffsetX,originalHome.labelOffsetX);
+  await page.getByLabel('عنوان اللوحة',{exact:true}).fill('منزل الطاقة');await page.getByLabel('عنوان اللوحة',{exact:true}).press('Tab');await page.getByLabel('نسبة الشريط %',{exact:true}).fill('72');await page.getByLabel('نسبة الشريط %',{exact:true}).press('Tab');
+  await page.locator('.layer').filter({hasText:'solar-inverter'}).click();await page.getByLabel('عدد النقاط',{exact:true}).fill('12');await page.getByLabel('عدد النقاط',{exact:true}).press('Tab');await save();await page.reload();await page.getByTestId('scene-canvas').waitFor();saved=await getProject();assert.equal(saved.nodes.find(n=>n.id==='home').title,'منزل الطاقة');assert.equal(saved.nodes.find(n=>n.id==='home').progress,72);assert.equal(saved.edges[0].particleCount,12);
+  await page.getByRole('button',{name:'معاينة وتصدير Lottie',exact:true}).click();await page.locator('.lottie-preview svg').waitFor({timeout:10000}).catch(async e=>{console.log('Reference export diagnostic',await page.locator('.export-dialog').innerText(),errors);throw e;});await page.waitForFunction(()=>!Array.from(document.querySelectorAll('button')).find(b=>b.textContent==='تنزيل ملف Lottie .json')?.disabled);
+  const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'تنزيل ملف Lottie .json'}).click();const download=await downloadPromise,data=JSON.parse(await readFile(await download.path(),'utf8'));
+  assert.equal(data.op,180);assert.equal(data.ddd,0);assert.ok(data.layers.filter(l=>l.nm.endsWith(' • leader')).length===6);assert.ok(data.layers.filter(l=>/node-(solar|inverter|home|sun) • icon/.test(l.nm)).every(l=>l.ty===4),'New equipment must remain vector shapes');assert.ok(data.assets.every(a=>a.e===1&&a.p.startsWith('data:image/')));
+  const sunLayer=data.layers.find(l=>l.nm==='node-sun • icon');assert.equal(sunLayer.ks.r.a,1);assert.equal(sunLayer.ks.r.k.at(-1).s[0],360);
+  const preview=page.locator('.lottie-preview'),before=await preview.innerHTML();await page.getByLabel('إطار معاينة Lottie').fill('37');assert.notEqual(await preview.innerHTML(),before);
+  // Standalone nature exports have real vector keyframes, and inactive/hidden states stop them.
+  const nature=await page.evaluate(async()=>{const c=window.FlowCore,p=c.preset('blank');p.nodes=[c.node('river','river','River',500,320,600,165,{showLabel:false,animation:'water',animationDuration:4})];p.assets={river:c.extraAssets.river};let data=await c.lottie(p);const moving=data.layers.filter(l=>l.nm.includes(' • water')),active={op:data.op,count:moving.length,animated:moving.every(l=>l.shapes[0].it.find(s=>s.ty==='st').d.find(d=>d.n==='o').v.a===1)};p.nodes[0].state='inactive';data=await c.lottie(p);const inactive=data.layers.filter(l=>l.nm.includes(' • water')).every(l=>l.shapes[0].it.find(s=>s.ty==='st').d.find(d=>d.n==='o').v.a===0);p.nodes[0].state='hidden';data=await c.lottie(p);const hidden=!data.layers.some(l=>l.nm.startsWith('node-river'));p.nodes[0].state='active';p.nodes[0].labelOffsetX=Infinity;let invalid=false;try{c.validate(p);}catch{invalid=true;}return{active,inactive,hidden,invalid,connect:c.canConnect(p.nodes[0])};});
+  assert.deepEqual(nature,{active:{op:120,count:3,animated:true},inactive:true,hidden:true,invalid:true,connect:false});
+  await page.getByRole('button',{name:'إغلاق المعاينة'}).click();await page.getByRole('button',{name:'طبيعة',exact:true}).click();await page.getByRole('button',{name:'+ شمس متحركة · Lottie',exact:true}).click();await page.getByLabel('نوع الحركة').waitFor({timeout:3000}).catch(async e=>{console.log('Motion UI diagnostic',await page.locator('.inspector').innerText(),await page.locator('.toast').allTextContents());throw e;});assert.equal(await page.getByLabel('نوع الحركة').inputValue(),'spin');await page.getByLabel('نوع الحركة').selectOption('breathe');await save();saved=await getProject();assert.equal(saved.nodes.at(-1).animation,'breathe');assert.deepEqual(errors,[]);
  }finally{await browser?.close();server.kill('SIGTERM');await new Promise(resolve=>server.once('exit',resolve));await rm(folder,{recursive:true,force:true});}
 });
