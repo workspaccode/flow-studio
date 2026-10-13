@@ -1,0 +1,17 @@
+{
+  "inverter": {
+    "file": "inverter.png",
+    "width": 720,
+    "height": 562
+  },
+  "solar": {
+    "file": "solar.png",
+    "width": 720,
+    "height": 653
+  },
+  "grid": {
+    "file": "grid.png",
+    "width": 455,
+    "height": 720
+  }
+}
