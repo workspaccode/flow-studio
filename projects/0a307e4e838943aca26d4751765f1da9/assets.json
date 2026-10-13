@@ -13,5 +13,10 @@
     "file": "grid.png",
     "width": 455,
     "height": 720
+  },
+  "sun": {
+    "file": "sun.svg",
+    "width": 200,
+    "height": 200
   }
 }
